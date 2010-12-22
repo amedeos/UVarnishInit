@@ -1,0 +1,30 @@
+#
+# Configuration file for varnish service
+#
+
+# user
+VARNISH_USER=varnish
+
+# home
+VARNISH_HOME=/usr/local/varnish
+
+# vcl script
+VCL_FILE=${VARNISH_HOME}/etc/varnish/default.vcl
+
+# pidfile
+PIDFILE=${VARNISH_HOME}/var/varnish/varnish.pid
+
+# listen addr
+LISTEN_ADDR=127.0.0.1
+
+# listen port
+LISTEN_PORT=8080
+
+# backend storage option (-s)
+STORAGE="malloc,100M"
+
+# telnet addr
+TELNET_ADDR=127.0.0.1
+
+# telnet port
+TELNET_PORT=2000

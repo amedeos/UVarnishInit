@@ -1,0 +1,5 @@
+deploy
+deploy.dat
+*.swp
+exe.txt
+*.vcl
