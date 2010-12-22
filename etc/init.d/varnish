@@ -19,7 +19,7 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="varnish HTTP accelerator"
 NAME=varnish
-DAEMON_DIR=
+DAEMON=
 DAEMON_ARGS=""
 #PIDFILE=/var/run/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
@@ -27,14 +27,35 @@ SCRIPTNAME=/etc/init.d/$NAME
 # Read configuration variable file if it is present
 [ -r /etc/default/$NAME ] && . /etc/default/$NAME
 
-# where varnish reside
-DAEMON_DIR=${VARNISH_HOME}
+# varnishd exe
+DAEMON=${VARNISHD}
 
-echo $DAEMON_DIR
-exit
+# pidfile construct
+PIDFILE=${VARNISH_PID}
+
+# pidfile directory
+VARNISH_PIDDIR=`dirname $VARNISH_PID `
+if [ ! -d "$VARNISH_PIDDIR" ]; then
+	echo "Error: Directory $VARNISH_PIDDIR doesn't exist! exit"
+	exit 0
+fi
+
+# vcl  file
+VCL_FILE=$VARNISH_VCL
+if [ ! -r "$VCL_FILE" ]; then
+	echo "Error: VCL file $VCL_FILE doesn't exist! exit"
+	exit
+fi
+
+# port addr
+PORT=$LISTEN_PORT
+if [ ! "$PORT" != "" ]; then
+	echo "Error: No LISTEN_PORT defined in '/etc/default/$NAME'. Exit"
+	exit
+fi
 
 # Exit if the package is not installed
-[ -d "$DAEMON_DIR" ] || exit 0
+[ -x "$DAEMON" ] || exit 0
 
 # Load the VERBOSE setting and other rcS variables
 . /lib/init/vars.sh
@@ -52,11 +73,51 @@ do_start()
 	#   0 if daemon has been started
 	#   1 if daemon was already running
 	#   2 if daemon could not be started
-	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
-		|| return 1
-	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \
-		$DAEMON_ARGS \
-		|| return 2
+	log_daemon_msg "Starting $NAME"
+
+	# build args
+	DAEMON_ARGS="-f $VARNISH_VCL -P $PIDFILE"
+	# /* TODO: Check ipv4 valid address */
+	if [ "$LISTEN_ADDR" != "" ]; then
+		DAEMON_ARGS="$DAEMON_ARGS -a $LISTEN_ADDR"
+	else
+		DAEMON_ARGS="$DAEMON_ARGS -a 0.0.0.0"
+	fi
+	DAEMON_ARGS="$DAEMON_ARGS:$PORT"
+	if [ "$VARNISH_STORAGE" != "" ]; then
+		DAEMON_ARGS="$DAEMON_ARGS -s $VARNISH_STORAGE"
+	else
+		DAEMON_ARGS="$DAEMON_ARGS -s malloc,32M"
+	fi
+	# telnet option
+	# /* TODO: Add more checks and options */
+	if [ "$TELNET_ADDR" != "" ]; then
+		if [ "$TELNET_PORT" ]; then
+			DAEMON_ARGS="$DAEMON_ARGS -T $TELNET_ADDR:$TELNET_PORT"
+		fi
+	fi
+	# user
+	if [ "$VARNISH_USER" != "" ]; then
+		DAEMON_ARGS="$DAEMON_ARGS -u $VARNISH_USER"
+	fi
+	#echo $DAEMON_ARGS
+	start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS > /dev/null 2>&1
+	RETVAL=$?
+	#echo $RETVAL
+	if [ $RETVAL -eq 0 ]; then
+		log_end_msg 0
+	elif [ $RETVAL -eq 1 ]; then
+		echo -n "      "
+		echo -n "Service $NAME is already running"
+		log_end_msg 1
+	else 
+		log_end_msg 2
+	fi
+	#start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
+	#	|| return 1
+	#start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \
+	#	$DAEMON_ARGS \
+	#	|| return 2
 	# Add code here, if necessary, that waits for the process to be ready
 	# to handle requests from services started subsequently which depend
 	# on this one.  As a last resort, sleep for some time.
@@ -72,20 +133,31 @@ do_stop()
 	#   1 if daemon was already stopped
 	#   2 if daemon could not be stopped
 	#   other if a failure occurred
-	start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 --pidfile $PIDFILE --name $NAME
-	RETVAL="$?"
-	[ "$RETVAL" = 2 ] && return 2
+	# /* TODO: fix hardcoded name -> varnishd */
+	log_daemon_msg "Stopping $NAME"
+	start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 --pidfile $PIDFILE --name varnishd
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ]; then
+		log_end_msg 0
+	elif [ $RETVAL -eq 1 ]; then
+		echo -n "      "
+		echo -n "Service $NAME is NOT running"
+		log_end_msg 1
+	else
+		log_end_msg 2
+		return 2
+	fi
 	# Wait for children to finish too if this is a daemon that forks
 	# and if the daemon is only ever run from this initscript.
 	# If the above conditions are not satisfied then add some other code
 	# that waits for the process to drop all resources that could be
 	# needed by services started subsequently.  A last resort is to
 	# sleep for some time.
-	start-stop-daemon --stop --quiet --oknodo --retry=0/30/KILL/5 --exec $DAEMON
-	[ "$?" = 2 ] && return 2
+	#start-stop-daemon --stop --quiet --oknodo --retry=0/30/KILL/5 --exec $DAEMON
+	#[ "$?" = 2 ] && return 2
 	# Many daemons don't delete their pidfiles when they exit.
 	rm -f $PIDFILE
-	return "$RETVAL"
+	return $RETVAL
 }
 
 #
@@ -122,6 +194,7 @@ case "$1" in
        status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
        ;;
   #reload|force-reload)
+	# TODO: implement reload
 	#
 	# If do_reload() is not implemented then leave this commented out
 	# and leave 'force-reload' as an alias for 'restart'.
