@@ -54,6 +54,18 @@ if [ ! "$PORT" != "" ]; then
 	exit
 fi
 
+# secret file 
+if [ ! "$SECRET" != "" ]; then
+	echo "Error: No secret file supplied. Exit"
+	exit
+else
+	if [ ! -r "$SECRET" ]; then
+		echo "Error: Secret file $SECRET doesn't exist! exit"
+		exit
+	# TODO: verify len(secret) > 0
+	fi
+fi
+
 # Exit if the package is not installed
 [ -x "$DAEMON" ] || exit 0
 
@@ -76,7 +88,7 @@ do_start()
 	log_daemon_msg "Starting $NAME"
 
 	# build args
-	DAEMON_ARGS="-f $VARNISH_VCL -P $PIDFILE"
+	DAEMON_ARGS="-f $VARNISH_VCL -P $PIDFILE -S $SECRET"
 	# /* TODO: Check ipv4 valid address */
 	if [ "$LISTEN_ADDR" != "" ]; then
 		DAEMON_ARGS="$DAEMON_ARGS -a $LISTEN_ADDR"

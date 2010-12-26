@@ -23,6 +23,9 @@ LISTEN_ADDR=127.0.0.1
 # listen port
 LISTEN_PORT=8080
 
+# secret file 
+SECRET=/etc/varnish/secret
+
 # backend storage option (-s) (optional) --> default = malloc,32M
 VARNISH_STORAGE="malloc,100M"
 
