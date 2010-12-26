@@ -76,6 +76,23 @@ fi
 # Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
 . /lib/lsb/init-functions
 
+cli_telnet() {
+	# check parameters number
+	if [ ! "$#" -eq 1 ]; then
+		echo "Error when calling cli_telnet function. Exit"
+		exit 1
+	fi
+	local varname=$1
+	local var0=
+	# TODO: Add more checks and options
+	if [ "$TELNET_ADDR" != "" ]; then
+		if [ "$TELNET_PORT" ]; then
+			var0="-T $TELNET_ADDR:$TELNET_PORT"
+		fi
+	fi
+	eval $varname='$(echo $var0)'
+}
+
 #
 # Function that starts the daemon/service
 #
@@ -102,12 +119,8 @@ do_start()
 		DAEMON_ARGS="$DAEMON_ARGS -s malloc,32M"
 	fi
 	# telnet option
-	# /* TODO: Add more checks and options */
-	if [ "$TELNET_ADDR" != "" ]; then
-		if [ "$TELNET_PORT" ]; then
-			DAEMON_ARGS="$DAEMON_ARGS -T $TELNET_ADDR:$TELNET_PORT"
-		fi
-	fi
+	cli_telnet CLI
+	DAEMON_ARGS="$DAEMON_ARGS $CLI"
 	# user
 	if [ "$VARNISH_USER" != "" ]; then
 		DAEMON_ARGS="$DAEMON_ARGS -u $VARNISH_USER"
@@ -181,8 +194,52 @@ do_reload() {
 	# restarting (for example, when it is sent a SIGHUP),
 	# then implement that here.
 	#
-	start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME
+	#start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME
+	cli_telnet CLI
+	if [ "$CLI" != "" ]; then
+		VARNISHADM=${VARNISH_HOME}/bin/varnishadm
+		if [ -x $VARNISHADM ]; then
+			if [ "$SECRET" != "" ]; then
+				DAEMON_ARGS="$CLI -S $SECRET"
+			else
+				DAEMON_ARGS="$CLI"
+			fi
+			NOW=`date +%Y%m%d_%H%M%S_%N`
+			$VARNISHADM $DAEMON_ARGS vcl.load reload_${NOW} $VCL_FILE > /dev/null 2>&1
+			RETVAL=$?
+			if [ ! $RETVAL -eq 0 ]; then
+				return $RETVAL
+			fi
+			$VARNISHADM $DAEMON_ARGS vcl.use reload_${NOW} > /dev/null 2>&1
+			RETVAL=$?
+			if [ ! $RETVAL -eq 0 ]; then
+				return $RETVAL
+			fi
+		fi
+	fi
 	return 0
+}
+
+do_status() {
+	status_of_proc "$DAEMON" "$NAME"
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ]; then
+		cli_telnet CLI
+		if [ "$CLI" != "" ]; then
+			VARNISHADM=${VARNISH_HOME}/bin/varnishadm
+			if [ -x $VARNISHADM ]; then
+				echo ""
+				if [ "$SECRET" != "" ]; then
+					DAEMON_ARGS="$CLI -S $SECRET"
+				else
+					DAEMON_ARGS="$CLI"
+				fi
+				$VARNISHADM $DAEMON_ARGS stats
+			fi
+		fi
+	else
+		exit $RETVAL
+	fi
 }
 
 case "$1" in
@@ -203,18 +260,18 @@ case "$1" in
 	esac
 	;;
   status)
-       status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
+	   do_status
        ;;
-  #reload|force-reload)
+  reload|force-reload)
 	# TODO: implement reload
 	#
 	# If do_reload() is not implemented then leave this commented out
 	# and leave 'force-reload' as an alias for 'restart'.
 	#
-	#log_daemon_msg "Reloading $DESC" "$NAME"
-	#do_reload
-	#log_end_msg $?
-	#;;
+	log_daemon_msg "Reloading $DESC" "$NAME"
+	do_reload
+	log_end_msg $?
+	;;
   restart|force-reload)
 	#
 	# If the "reload" option is implemented then remove the
